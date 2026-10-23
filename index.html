@@ -1734,7 +1734,7 @@ function programCard(id){
     ? '<div class="warn">⚠️ <span class="todo">【要確認】</span>と記載のある部分は、内容が変わっている可能性があります。最新の情報は記載の相談窓口でお確かめください。</div>' : '';
   const row = (lbl,val)=> val ? `<div class="row"><span class="lbl">${lbl}</span>${val}</div>` : '';
   const relHtml = (d.related && d.related.length)
-    ? `<div class="row" style="padding:0 14px;"><span class="lbl">🔗 あわせて検討したい制度</span><br>${d.related.map(r=>PROGRAMS[r]?`<button class="rel-btn" onclick="showRelated('${r}',this)">${PROGRAMS[r].name}</button>`:'').join('')}</div>`
+    ? `<div class="row" style="padding:0 14px;"><span class="lbl">🔗 あわせて検討したい制度</span><br>${d.related.map(r=>PROGRAMS[r]&&!(r==='fukushi_shikin'&&isSenior65())?`<button class="rel-btn" onclick="showRelated('${r}',this)">${PROGRAMS[r].name}</button>`:'').join('')}</div>`
     : '';
   card.innerHTML = `
     <h3>${p.name}<span class="scope ${p.scope}">${scopeLabel[p.scope]}</span></h3>
@@ -1787,6 +1787,19 @@ function profileText(){
   return parts.join('　／　');
 }
 
+/* 年代が65歳以上のときは、生活福祉資金の貸付（原則、借受人が65歳以上だと借りられない）を候補から外す */
+function isSenior65(){
+  const e = document.getElementById('pfAge');
+  return !!e && (e.value === '65〜74歳' || e.value === '75歳以上');
+}
+function excludeByAge(ids){
+  if(!isSenior65() || !ids.includes('fukushi_shikin')) return ids;
+  const rest = ids.filter(id=>id!=='fukushi_shikin');
+  /* 貸付だけが候補だった場合は、まず相談できる総合窓口を出す */
+  if(rest.length===0) rest.push('jiritsu_soudan');
+  return rest;
+}
+
 function renderResult(ids, introHtml){
   currentResultIds = ids.slice();
   const intro = document.getElementById('resultIntro');
@@ -1808,6 +1821,10 @@ function showResult(){
   let added = 0;
   if(free){
     matchByKeywords(free).forEach(id=>{ if(!ids.includes(id)){ ids.push(id); added++; } });
+  }
+  if(ids.length>0){
+    const kept = excludeByAge(ids).slice();
+    ids.length = 0; kept.forEach(id=>ids.push(id));
   }
 
   if(ids.length===0){
@@ -1835,7 +1852,7 @@ function matchByKeywords(text){
 function searchByText(){
   const text = document.getElementById('searchText').value.trim();
   if(!text){ alert('困っていることを文章で書いてから、ボタンを押してください。'); return; }
-  const ids = matchByKeywords(text);
+  const ids = excludeByAge(matchByKeywords(text));
 
   /* 相談シートにも引き継げるよう、STEP2の自由記述欄へ写しておく */
   const freeBox = document.getElementById('freeText');
