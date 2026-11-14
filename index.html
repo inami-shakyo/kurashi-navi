@@ -1681,6 +1681,7 @@ const PROGRAM_DETAILS = {
 const scopeLabel = {zenkoku:"全国の制度", hyogo:"兵庫県の制度", inami:"稲美町の制度・サービス"};
 let currentCat = null;
 let currentResultIds = [];   /* STEP3に表示中の制度ID（相談シートにもこの内容を載せる） */
+let lastSearchText = '';     /* 前回「文章で書いて探す」で使った文（自由記述欄へ写した分を見分けるため） */
 let fromSearch = false;      /* STEP3へ「文章で書いて探す」から来たか（もどる先と相談シートの書き方が変わる） */
 
 /* STEP3の「もどる」：文章検索から来たときは最初の画面へ、分野から来たときは選択の画面へ */
@@ -1688,6 +1689,8 @@ function backFromResult(){ goStep(fromSearch ? 1 : 2); }
 
 /* 「最初からやり直す」：入力した内容をすべて消して最初の画面へ（窓口の端末などで、前の方の入力が残らないように） */
 function resetAll(){
+  if(!confirm('入力した内容をすべて消して、最初の画面にもどります。よろしいですか？')) return;
+  lastSearchText = '';
   ['searchText','freeText'].forEach(id=>{ document.getElementById(id).value = ''; });
   ['pfWho','pfAge','pfHome','pfUrgent'].forEach(id=>{ document.getElementById(id).value = ''; });
   ['questionArea','programList','resultIntro','reportArea'].forEach(id=>{ document.getElementById(id).innerHTML = ''; });
@@ -1857,7 +1860,7 @@ function showResult(){
 
 /* ===== つらい気持ちの言葉が書かれたとき、先に出す案内 =====
    「文章で書いて探す」とSTEP2の自由記述の、どちらに書かれても同じ案内を出す。 */
-const CRISIS_RE = /死にたい|死のう|死んでしま|死ぬしか|消えたい|消えてしまいたい|いなくなりたい|自殺|自死|命を絶|生きていたくない|生きているのがつら|生きるのがつら/;
+const CRISIS_RE = /死にた|しにた|死のう|死んでしまいたい|死ぬしか|消えたい|消えてしまいたい|消えてなくなりたい|いなくなりたい|自殺|自死|命を絶|無理心中|親子心中|一家心中|生きていたくない|生きているのがつら|生きるのがつら/;
 const CRISIS_MSG = '<b>おつらい気持ちを書いてくださって、ありがとうございます。どうかひとりで抱え込まず、できるだけ早くご相談ください。</b><br>24時間いつでも：よりそいホットライン TEL 0120-279-338（無料）。平日の日中は、役場 健康福祉課 健康推進係の保健師 TEL 079-492-9138 にもご相談いただけます。命に危険があるときは、ためらわず119番・110番へ。<br><br>';
 
 /* ===== 文中の電話番号をタップで発信できるようにする（すでにリンクの箇所には触れない） ===== */
@@ -1865,7 +1868,10 @@ const TEL_RE = /0\d{1,4}-\d{1,4}-\d{3,4}|0570-\d{6}/g;
 function telLinks(html){
   return String(html).split(/(<a\b[^>]*>[\s\S]*?<\/a>)/).map(part=>{
     if(/^<a\b/.test(part)) return part;
-    return part.replace(TEL_RE, t=>`<a class="tel-link" href="tel:${t.replace(/-/g,'')}">${t}</a>`);
+    return part.replace(TEL_RE, (t, off)=>{
+      if(/(?:FAX|ＦＡＸ|ファクス|ファックス)[\s　:：]*$/i.test(part.slice(Math.max(0, off-8), off))) return t;   // FAX番号は発信リンクにしない
+      return `<a class="tel-link" href="tel:${t.replace(/-/g,'')}">${t}</a>`;
+    });
   }).join('');
 }
 
@@ -1887,8 +1893,13 @@ function searchByText(){
   const ids = excludeByAge(matchByKeywords(text));
 
   /* 相談シートにも引き継げるよう、STEP2の自由記述欄へ写しておく */
+  /* STEP2の自由記述欄が空か、前回の検索文のままのときだけ置き換える。
+     ご本人が別に書いた文章があるときは消さず、その下に検索文を足す */
   const freeBox = document.getElementById('freeText');
-  freeBox.value = text;
+  const cur = freeBox.value.trim();
+  if(!cur || cur === lastSearchText) freeBox.value = text;
+  else if(!cur.includes(text)) freeBox.value = cur + '\n' + text;
+  lastSearchText = text;
 
   /* 文章検索の結果には、前に選んだ分野・チェックを持ち込まない（相談シートに無関係な項目が混ざるため） */
   currentCat = null;
