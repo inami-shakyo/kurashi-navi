@@ -133,6 +133,7 @@
   button.ghost:hover{background:var(--green-light);}
   button.act.wide{width:100%;}
 
+  a.tel-link{color:inherit;font-weight:bold;text-decoration:underline;white-space:nowrap;}
   .result-intro{
     background:var(--green-light);border-radius:var(--radius);padding:16px 18px;
     margin-bottom:20px;font-size:16px;
@@ -327,7 +328,7 @@
 
   <!-- ===== STEP3：結果 ===== -->
   <section class="panel" id="panel3">
-    <button class="back" onclick="goStep(2)">← 選択にもどる</button>
+    <button class="back" onclick="backFromResult()">← もどる</button>
     <h2 class="q">あなたに関係しそうな制度・支援</h2>
     <div class="result-intro" id="resultIntro"></div>
     <div id="programList"></div>
@@ -341,7 +342,7 @@
 
     <div class="btn-row">
       <button class="act" onclick="buildReport()">📝 相談シートを作る</button>
-      <button class="act ghost" onclick="goStep(1)">最初からやり直す</button>
+      <button class="act ghost" onclick="resetAll()">最初からやり直す（入力を消します）</button>
     </div>
   </section>
 
@@ -354,7 +355,7 @@
     <div class="btn-row no-print">
       <button class="act" onclick="window.print()">🖨 印刷 / PDF保存</button>
       <button class="act ghost" onclick="copyReport()">📋 文章をコピー</button>
-      <button class="act ghost" onclick="goStep(1)">最初からやり直す</button>
+      <button class="act ghost" onclick="resetAll()">最初からやり直す（入力を消します）</button>
     </div>
     <p class="warn no-print" id="copyMsg" style="display:none;">コピーしました。メールなどに貼り付けられます。</p>
   </section>
@@ -1680,6 +1681,19 @@ const PROGRAM_DETAILS = {
 const scopeLabel = {zenkoku:"全国の制度", hyogo:"兵庫県の制度", inami:"稲美町の制度・サービス"};
 let currentCat = null;
 let currentResultIds = [];   /* STEP3に表示中の制度ID（相談シートにもこの内容を載せる） */
+let fromSearch = false;      /* STEP3へ「文章で書いて探す」から来たか（もどる先と相談シートの書き方が変わる） */
+
+/* STEP3の「もどる」：文章検索から来たときは最初の画面へ、分野から来たときは選択の画面へ */
+function backFromResult(){ goStep(fromSearch ? 1 : 2); }
+
+/* 「最初からやり直す」：入力した内容をすべて消して最初の画面へ（窓口の端末などで、前の方の入力が残らないように） */
+function resetAll(){
+  ['searchText','freeText'].forEach(id=>{ document.getElementById(id).value = ''; });
+  ['pfWho','pfAge','pfHome','pfUrgent'].forEach(id=>{ document.getElementById(id).value = ''; });
+  ['questionArea','programList','resultIntro','reportArea'].forEach(id=>{ document.getElementById(id).innerHTML = ''; });
+  currentCat = null; currentResultIds = []; fromSearch = false;
+  goStep(1);
+}
 
 function initCats(){
   const grid = document.getElementById('catGrid');
@@ -1744,7 +1758,7 @@ function programCard(id){
     ${row('進め方', p.flow)}
     ${row('お金のこと', p.cost)}
     ${p.meyasu ? `<div class="meyasu"><span class="lbl">💴 金額・基準のめやす</span>${p.meyasu}</div>` : ''}
-    ${row('どこに相談？', p.contact)}
+    ${row('どこに相談？', telLinks(p.contact))}
     ${(d.detail||d.docs||d.tips||p.basis||p.staffNote) ? `
     <details class="staff">
       <summary>📘 くわしい解説（要件・手続き・持ち物・注意点・根拠）</summary>
@@ -1805,7 +1819,7 @@ function renderResult(ids, introHtml){
   const intro = document.getElementById('resultIntro');
   const list = document.getElementById('programList');
   list.innerHTML = '';
-  intro.innerHTML = introHtml;
+  intro.innerHTML = telLinks(introHtml);
   ids.forEach(id=>{ const c = programCard(id); if(c) list.appendChild(c); });
   renderContact();
   goStep(3);
@@ -1827,14 +1841,32 @@ function showResult(){
     ids.length = 0; kept.forEach(id=>ids.push(id));
   }
 
+  const crisis = CRISIS_RE.test(free);
+  if(crisis && !ids.includes('kokoro_soudan')) ids.unshift('kokoro_soudan');
+  fromSearch = false;
+
   if(ids.length===0){
     renderResult(ids, '選択がありませんでした。当てはまるものにチェックを入れて、もう一度お試しください。<br>はっきりしない場合は、下に載せている分野別の窓口から、いちばん近いものへお問い合わせください。');
   }else{
-    let msg = `選んでいただいた内容から、<b>${ids.length}件</b>の制度・支援が関係しそうです。`;
+    let msg = (crisis ? CRISIS_MSG : '') + `選んでいただいた内容から、<b>${ids.length}件</b>の制度・支援が関係しそうです。`;
     if(added>0) msg += `（自由記述の文章から見つかった候補${added}件を含みます）`;
     msg += `<br>あくまで目安です。実際に使えるかは要件があり、それぞれの制度の窓口の職員が一緒に確認します。`;
     renderResult(ids, msg);
   }
+}
+
+/* ===== つらい気持ちの言葉が書かれたとき、先に出す案内 =====
+   「文章で書いて探す」とSTEP2の自由記述の、どちらに書かれても同じ案内を出す。 */
+const CRISIS_RE = /死にたい|死のう|死んでしま|死ぬしか|消えたい|消えてしまいたい|いなくなりたい|自殺|自死|命を絶|生きていたくない|生きているのがつら|生きるのがつら/;
+const CRISIS_MSG = '<b>おつらい気持ちを書いてくださって、ありがとうございます。どうかひとりで抱え込まず、できるだけ早くご相談ください。</b><br>24時間いつでも：よりそいホットライン TEL 0120-279-338（無料）。平日の日中は、役場 健康福祉課 健康推進係の保健師 TEL 079-492-9138 にもご相談いただけます。命に危険があるときは、ためらわず119番・110番へ。<br><br>';
+
+/* ===== 文中の電話番号をタップで発信できるようにする（すでにリンクの箇所には触れない） ===== */
+const TEL_RE = /0\d{1,4}-\d{1,4}-\d{3,4}|0570-\d{6}/g;
+function telLinks(html){
+  return String(html).split(/(<a\b[^>]*>[\s\S]*?<\/a>)/).map(part=>{
+    if(/^<a\b/.test(part)) return part;
+    return part.replace(TEL_RE, t=>`<a class="tel-link" href="tel:${t.replace(/-/g,'')}">${t}</a>`);
+  }).join('');
 }
 
 /* ===== 自由記述からの制度検索（ブラウザ内のことば照合。外部送信なし） ===== */
@@ -1856,12 +1888,17 @@ function searchByText(){
 
   /* 相談シートにも引き継げるよう、STEP2の自由記述欄へ写しておく */
   const freeBox = document.getElementById('freeText');
-  if(!freeBox.value.trim()) freeBox.value = text;
+  freeBox.value = text;
+
+  /* 文章検索の結果には、前に選んだ分野・チェックを持ち込まない（相談シートに無関係な項目が混ざるため） */
+  currentCat = null;
+  document.getElementById('questionArea').innerHTML = '';
+  fromSearch = true;
 
   let msg;
-  if(/死にたい|消えたい|自殺|命を絶/.test(text)){
+  if(CRISIS_RE.test(text)){
     if(!ids.includes('kokoro_soudan')) ids.unshift('kokoro_soudan');
-    msg = `<b>おつらい気持ちを書いてくださって、ありがとうございます。どうかひとりで抱え込まず、できるだけ早くご相談ください。</b><br>24時間いつでも：よりそいホットライン TEL 0120-279-338（無料）。平日の日中は、役場 健康福祉課 健康推進係の保健師 TEL 079-492-9138 にもご相談いただけます。命に危険があるときは、ためらわず119番・110番へ。<br><br>お書きいただいた内容から、<b>${ids.length}件</b>の制度・支援が見つかりました。`;
+    msg = CRISIS_MSG + `お書きいただいた内容から、<b>${ids.length}件</b>の制度・支援が見つかりました。`;
   }else if(ids.length===0){
     msg = 'お書きいただいた内容からは、ぴったりの制度をうまく見つけられませんでした。<br>「分野から選ぶ」ボタンもお試しください。窓口が分からないときは、下に載せている分野別の窓口から、いちばん近いものへお電話ください。内容によっては、別の窓口をご案内することがあります。';
   }else{
@@ -1889,7 +1926,7 @@ function showAllPrograms(){
 
 function renderContact(){
   const rows = ENTRY_CONTACTS.map(c => `
-    <div class="row"><span style="color:var(--sub);font-size:14px;">${c.area}</span><br><b>${c.name}</b>　<span style="white-space:nowrap;">☎ ${c.tel}</span></div>`).join('');
+    <div class="row"><span style="color:var(--sub);font-size:14px;">${c.area}</span><br><b>${c.name}</b>　<span style="white-space:nowrap;">☎ ${telLinks(c.tel)}</span></div>`).join('');
   document.getElementById('contactBox').innerHTML = rows +
     `<div class="row" style="color:var(--sub);font-size:15px;">${ENTRY_NOTE}</div>`;
 }
@@ -1911,7 +1948,7 @@ function buildReport(){
     <p class="rep-meta">作成日：${dstr}　／　くらしの相談ナビ（稲美町社会福祉協議会）で作成（掲載内容：${DATA_ASOF}時点）</p>`;
 
   html += `<div class="rep-sec"><div class="rep-h">${++n}. 相談したい分野</div>
-    <div>${currentCat ? currentCat.emoji+' '+currentCat.title : '（未選択）'}</div></div>`;
+    <div>${currentCat ? currentCat.emoji+' '+currentCat.title : (fromSearch ? '（文章で書いて探しました）' : '（未選択）')}</div></div>`;
 
   if(prof){
     html += `<div class="rep-sec"><div class="rep-h">${++n}. ご相談者の状況</div>
@@ -1983,7 +2020,7 @@ function copyReport(){
   const text =
 `【相談シート｜稲美町社会福祉協議会】 作成日：${dstr}
 
-1. 相談したい分野：${currentCat?currentCat.title:'（未選択）'}
+1. 相談したい分野：${currentCat?currentCat.title:(fromSearch?'（文章で書いて探しました）':'（未選択）')}
 ${prof?`〔ご相談者の状況〕${prof}\n`:''}
 2. 当てはまると感じた項目：
 ${checkedLabels.length?checkedLabels.map(l=>'・'+l).join('\n'):'（選択なし）'}
